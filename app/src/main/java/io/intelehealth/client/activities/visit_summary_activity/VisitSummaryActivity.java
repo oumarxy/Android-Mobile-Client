@@ -45,6 +45,8 @@ import android.view.View;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
@@ -74,6 +76,7 @@ import io.intelehealth.client.activities.past_medical_history_activity.PastMedic
 import io.intelehealth.client.activities.patient_survey_activity.PatientSurveyActivity;
 import io.intelehealth.client.activities.physical_exam_activity.PhysicalExamActivity;
 import io.intelehealth.client.activities.vitals_activity.VitalsActivity;
+import io.intelehealth.client.dao.VisitSummaryDAO;
 import io.intelehealth.client.database.DelayedJobQueueProvider;
 import io.intelehealth.client.database.LocalRecordsDatabaseHelper;
 import io.intelehealth.client.node.Node;
@@ -84,6 +87,7 @@ import io.intelehealth.client.services.PrescriptionDownloadService;
 import io.intelehealth.client.services.UpdateVisitService;
 import io.intelehealth.client.utilities.ConceptId;
 import io.intelehealth.client.utilities.HelperMethods;
+import io.intelehealth.client.utilities.SessionManager;
 import permissions.dispatcher.NeedsPermission;
 import permissions.dispatcher.OnNeverAskAgain;
 import permissions.dispatcher.OnPermissionDenied;
@@ -201,7 +205,8 @@ public class VisitSummaryActivity extends AppCompatActivity {
     TextView requestedTestsTextView;
     TextView additionalCommentsTextView;
     TextView followUpDateTextView;
-
+    //added checkbox flag .m
+    CheckBox flag;
 
     Boolean isPastVisit = false;
     Boolean isReceiverRegistered = false;
@@ -229,6 +234,7 @@ public class VisitSummaryActivity extends AppCompatActivity {
     String mFileName = "config.json";
     public static String prescription1;
     public static String prescription2;
+    SessionManager sessionManager;
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -305,12 +311,12 @@ public class VisitSummaryActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-
+sessionManager=new SessionManager(getApplicationContext());
         final Intent intent = this.getIntent(); // The intent was passed to the activity
-
         if (intent != null) {
             patientID = intent.getIntExtra("patientID", -1);
             visitID = intent.getStringExtra("visitID");
+
             mSharedPreference = this.getSharedPreferences(
                     "visit_summary", Context.MODE_PRIVATE);
             patientName = intent.getStringExtra("name");
@@ -324,6 +330,8 @@ public class VisitSummaryActivity extends AppCompatActivity {
                 physicalExams.addAll(selectedExams);
             }
         }
+
+
 
         SharedPreferences sharedPreferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
         if (sharedPreferences.contains("licensekey"))
@@ -353,7 +361,8 @@ public class VisitSummaryActivity extends AppCompatActivity {
 
         mDbHelper = new LocalRecordsDatabaseHelper(this.getApplicationContext());
         db = mDbHelper.getWritableDatabase();
-
+        //this to alter the table for emergency column in visit table
+        mDbHelper.updateColumn();
 
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_visit_summary);
@@ -383,6 +392,35 @@ public class VisitSummaryActivity extends AppCompatActivity {
         requestedTestsTextView = findViewById(R.id.textView_content_tests);
         additionalCommentsTextView = findViewById(R.id.textView_content_additional_comments);
         followUpDateTextView = findViewById(R.id.textView_content_follow_up_date);
+
+//        mahitit added
+        flag= findViewById(R.id.flaggedcheckbox);
+        String query = "Select ifnull(emergency,'') as emergency FROM visit WHERE _id = " + visitID + "";
+//                Cursor cursor;
+        Cursor cursor=db.rawQuery(query,null);
+        if(cursor!=null) {
+            while(cursor.moveToNext()) {
+                String emergency = cursor.getString(cursor.getColumnIndex("emergency"));
+                if (emergency.equalsIgnoreCase("true")){
+                    flag.setChecked(true);
+                }
+            }
+            cursor.close();
+        }
+        VisitSummaryDAO visitSummarydao = new VisitSummaryDAO();
+        visitUUID= visitSummarydao.getVisitUUID(visitID,db);
+        if(!visitUUID.isEmpty()){
+            flag.setEnabled(false);
+        }
+        flag.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView,boolean isChecked) {
+                Log.d(TAG, "Emergency flag val: "+String.valueOf(isChecked));
+                String emergency_checked = String.valueOf(isChecked);
+                String updateQuery="UPDATE visit SET emergency ='"+emergency_checked+"' WHERE _id = "+ visitID +"";
+                db.execSQL(updateQuery);
+        }
+        });
 
         baseDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES).getAbsolutePath();
 
@@ -554,6 +592,8 @@ public class VisitSummaryActivity extends AppCompatActivity {
                         serviceIntent.putExtra("visitID", visitID);
                         serviceIntent.putExtra("name", patientName);
                         startService(serviceIntent);
+
+
                     } else {
                         Log.i(TAG, "onClick: new visit");
                         serviceIntent = new Intent(VisitSummaryActivity.this, ClientService.class);
@@ -562,6 +602,8 @@ public class VisitSummaryActivity extends AppCompatActivity {
                         serviceIntent.putExtra("visitID", visitID);
                         serviceIntent.putExtra("name", patientName);
                         startService(serviceIntent);
+
+
                     }
 
                 } else if (c != null && c.moveToFirst()) {
@@ -579,6 +621,9 @@ public class VisitSummaryActivity extends AppCompatActivity {
                                 serviceIntent.putExtra("name", patientName);
                                 serviceIntent.putExtra("queueId", c.getInt(c.getColumnIndex(DelayedJobQueueProvider._ID)));
                                 startService(serviceIntent);
+
+
+
                             } else if (c.getString(c.getColumnIndex(DelayedJobQueueProvider.JOB_TYPE)).equals("obsUpdate")) {
                                 Log.i(TAG, "onClick: old obs delayed");
                                 serviceIntent = new Intent(VisitSummaryActivity.this, UpdateVisitService.class);
@@ -588,6 +633,8 @@ public class VisitSummaryActivity extends AppCompatActivity {
                                 serviceIntent.putExtra("name", patientName);
                                 serviceIntent.putExtra("queueId", c.getInt(c.getColumnIndex(DelayedJobQueueProvider._ID)));
                                 startService(serviceIntent);
+
+
                             }
                             break;
                         }
