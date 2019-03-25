@@ -24,6 +24,7 @@ public class visitSummaryHelper {
     private SessionManager sessionManger;
 
     //checking the patient visit or not
+//    Issue #680 
     public VisitModel isOpenmrsVisitExists(String patientuuid, final String visittimestamp) {
 
         sessionManger=new SessionManager(IntelehealthApplication.getAppContext());
