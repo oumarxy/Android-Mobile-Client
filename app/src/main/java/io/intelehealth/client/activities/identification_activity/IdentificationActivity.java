@@ -357,6 +357,7 @@ public class IdentificationActivity extends AppCompatActivity {
                 R.array.caste, android.R.layout.simple_spinner_item);
         countryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         mCaste.setAdapter(casteAdapter);
+//        Issue #648
 try {
     String economicLanguage = "economic_" + Locale.getDefault().getLanguage();
     int economics = res.getIdentifier(economicLanguage, "array", getApplicationContext().getPackageName());
