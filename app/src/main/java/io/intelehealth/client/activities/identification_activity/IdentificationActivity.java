@@ -64,12 +64,14 @@ import io.intelehealth.client.R;
 import io.intelehealth.client.activities.camera_activity.CameraActivity;
 import io.intelehealth.client.activities.patient_detail_activity.PatientDetailActivity;
 
+import io.intelehealth.client.activities.setup_activity.SetupActivity;
 import io.intelehealth.client.database.LocalRecordsDatabaseHelper;
 import io.intelehealth.client.node.Node;
 import io.intelehealth.client.objects.Patient;
 import io.intelehealth.client.utilities.EditTextUtils;
 import io.intelehealth.client.utilities.HelperMethods;
 import io.intelehealth.client.utilities.Logger;
+import io.intelehealth.client.utilities.Utilities;
 
 import static io.intelehealth.client.utilities.HelperMethods.LOG_TAG;
 import static io.intelehealth.client.utilities.HelperMethods.REQUEST_CAMERA;
@@ -320,6 +322,10 @@ public class IdentificationActivity extends AppCompatActivity {
 
         } catch (JSONException e) {
             e.printStackTrace();
+//            Issue #627
+//            added the catch exception to check the config and throwing back to setup activity
+            Toast.makeText(getApplicationContext(),"JsonException"+e,Toast.LENGTH_LONG).show();
+            showAlertDialogButtonClicked(e.toString());
         }
 
 
@@ -357,30 +363,30 @@ public class IdentificationActivity extends AppCompatActivity {
                 R.array.caste, android.R.layout.simple_spinner_item);
         countryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         mCaste.setAdapter(casteAdapter);
-try {
-    String economicLanguage = "economic_" + Locale.getDefault().getLanguage();
-    int economics = res.getIdentifier(economicLanguage, "array", getApplicationContext().getPackageName());
-    if(economics!=0) {
-        economicStatusAdapter = ArrayAdapter.createFromResource(this,
+        try {
+         String economicLanguage = "economic_" + Locale.getDefault().getLanguage();
+         int economics = res.getIdentifier(economicLanguage, "array", getApplicationContext().getPackageName());
+         if(economics!=0) {
+         economicStatusAdapter = ArrayAdapter.createFromResource(this,
                 economics, android.R.layout.simple_spinner_item);
-    }
-    countryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-    mEconomicStatus.setAdapter(economicStatusAdapter);
-}catch(Exception e){
-    Logger.logE("Identification","#648",e);
-}
-try {
-    String educationLanguage = "education_" + Locale.getDefault().getLanguage();
-    int educations = res.getIdentifier(educationLanguage, "array", getApplicationContext().getPackageName());
-   if(educations!=0) {
-       educationAdapter = ArrayAdapter.createFromResource(this,
+            }
+         countryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+         mEconomicStatus.setAdapter(economicStatusAdapter);
+        }catch(Exception e){
+         Logger.logE("Identification","#648",e);
+        }
+        try {
+         String educationLanguage = "education_" + Locale.getDefault().getLanguage();
+         int educations = res.getIdentifier(educationLanguage, "array", getApplicationContext().getPackageName());
+         if(educations!=0) {
+         educationAdapter = ArrayAdapter.createFromResource(this,
                educations, android.R.layout.simple_spinner_item);
 
-   }countryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-    mEducation.setAdapter(educationAdapter);
-}catch(Exception e){
-    Logger.logE("Identification","#648",e);
-}
+          }countryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+          mEducation.setAdapter(educationAdapter);
+        }catch(Exception e){
+           Logger.logE("Identification","#648",e);
+        }
         // generate patientid only if there is no intent for Identification activity
 
         if (patientID_edit == -1) {
@@ -1296,6 +1302,22 @@ try {
                     }
                 }).setNegativeButton("No", null).show();
 
+    }
+    public void showAlertDialogButtonClicked(String errorMessage) {
+
+        AlertDialog.Builder alertDialogBuilder = new AlertDialog.Builder(this);
+        alertDialogBuilder.setTitle("Config Error");
+        alertDialogBuilder.setMessage(errorMessage);
+        alertDialogBuilder.setNeutralButton(R.string.generic_ok, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                finish();
+                Intent i=new Intent(IdentificationActivity.this, SetupActivity.class);
+                startActivity(i);
+            }
+        });
+        AlertDialog alertDialog = alertDialogBuilder.create();
+        alertDialog.show();
     }
 
 
