@@ -86,6 +86,7 @@ import io.intelehealth.client.services.ClientService;
 import io.intelehealth.client.services.PrescriptionDownloadService;
 import io.intelehealth.client.services.UpdateVisitService;
 import io.intelehealth.client.utilities.ConceptId;
+import io.intelehealth.client.utilities.EmergencyEncounter;
 import io.intelehealth.client.utilities.HelperMethods;
 import io.intelehealth.client.utilities.SessionManager;
 import permissions.dispatcher.NeedsPermission;
@@ -407,18 +408,15 @@ sessionManager=new SessionManager(getApplicationContext());
             }
             cursor.close();
         }
-        VisitSummaryDAO visitSummarydao = new VisitSummaryDAO();
-        visitUUID= visitSummarydao.getVisitUUID(visitID,db);
-        if(!visitUUID.isEmpty()){
-            flag.setEnabled(false);
-        }
+//        VisitSummaryDAO visitSummarydao = new VisitSummaryDAO();
+//        visitUUID= visitSummarydao.getVisitUUID(visitID,db);
+//        if(!visitUUID.isEmpty()){
+//            flag.setEnabled(false);
+//        }
         flag.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView,boolean isChecked) {
-                Log.d(TAG, "Emergency flag val: "+String.valueOf(isChecked));
-                String emergency_checked = String.valueOf(isChecked);
-                String updateQuery="UPDATE visit SET emergency ='"+emergency_checked+"' WHERE _id = "+ visitID +"";
-                db.execSQL(updateQuery);
+
         }
         });
 
@@ -486,7 +484,17 @@ sessionManager=new SessionManager(getApplicationContext());
         uploadButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-
+                if(flag.isChecked()) {
+                    Log.d(TAG, "Emergency flag val: " + String.valueOf(flag.isChecked()));
+                    String emergency_checked = String.valueOf(flag.isChecked());
+                    String updateQuery = "UPDATE visit SET emergency ='" + emergency_checked + "' WHERE _id = " + visitID + "";
+                    db.execSQL(updateQuery);
+                }else{
+                    Log.d(TAG, "Emergency flag val: " + String.valueOf(flag.isChecked()));
+                    String emergency_checked = String.valueOf(flag.isChecked());
+                    String updateQuery = "UPDATE visit SET emergency ='" + emergency_checked + "' WHERE _id = " + visitID + "";
+                    db.execSQL(updateQuery);
+                }
                 if (patient.getOpenmrsId() == null || patient.getOpenmrsId().isEmpty()) {
                     String patientSelection = "_id = ?";
                     String[] patientArgs = {String.valueOf(patient.getId())};
@@ -564,7 +572,18 @@ sessionManager=new SessionManager(getApplicationContext());
                     }
                     if (visitIDCursor != null) visitIDCursor.close();
                 }
-
+                String[] columnsToReturn = {"start_datetime"};
+                String visitIDorderBy = "start_datetime";
+                String visitIDSelection = "_id = ?";
+                String[] visitIDArgs = {visitID};
+                final Cursor visitIDCursor = db.query("visit", columnsToReturn, visitIDSelection, visitIDArgs, null, null, visitIDorderBy);
+                visitIDCursor.moveToLast();
+                String startDateTime = visitIDCursor.getString(visitIDCursor.getColumnIndexOrThrow("start_datetime"));
+                visitIDCursor.close();
+                EmergencyEncounter emergencyEncounter=new EmergencyEncounter();
+                if(!flag.isChecked()) {
+                    emergencyEncounter.removeEncounterEmergency(visitID, visitUUID, db);
+                }
                 Snackbar.make(view, "Uploading to doctor.", Snackbar.LENGTH_LONG).show();
 
 
@@ -681,6 +700,7 @@ sessionManager=new SessionManager(getApplicationContext());
         tempcel = (TextView) findViewById(R.id.textView_temp);
         try {
             JSONObject obj = null;
+//            #630
             if (hasLicense) {
                 obj = new JSONObject(HelperMethods.readFileRoot(mFileName, this)); //Load the config file
             } else {

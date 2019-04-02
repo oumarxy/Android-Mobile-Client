@@ -4,6 +4,7 @@ import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.app.AlarmManager;
 import android.app.IntentService;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ContentValues;
@@ -29,6 +30,7 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -41,15 +43,18 @@ import java.util.Locale;
 import io.intelehealth.client.R;
 import io.intelehealth.client.activities.setting_activity.SettingsActivity;
 import io.intelehealth.client.activities.visit_summary_activity.VisitSummaryActivity;
+import io.intelehealth.client.api.retrofit.RestApi;
 import io.intelehealth.client.application.IntelehealthApplication;
 import io.intelehealth.client.database.DelayedJobQueueProvider;
 import io.intelehealth.client.database.LocalRecordsDatabaseHelper;
 import io.intelehealth.client.models.Identifier;
+import io.intelehealth.client.network.ApiClient;
 import io.intelehealth.client.network.visitModel.VisitModel;
 import io.intelehealth.client.objects.Obs;
 import io.intelehealth.client.objects.Patient;
 import io.intelehealth.client.objects.WebResponse;
 import io.intelehealth.client.utilities.ConceptId;
+import io.intelehealth.client.utilities.EmergencyEncounter;
 import io.intelehealth.client.utilities.HelperMethods;
 import io.intelehealth.client.utilities.NetworkConnection;
 import io.intelehealth.client.utilities.SessionManager;
@@ -105,7 +110,7 @@ public class ClientService extends IntentService {
     String location_uuid = prefs.getString(SettingsActivity.KEY_PREF_LOCATION_UUID, null);
     String provider_uuid = prefs.getString("providerid", null);
     String location_desc = prefs.getString(SettingsActivity.KEY_PREF_LOCATION_DESCRIPTION, null);
-
+    EmergencyEncounter emergencyEncounter=new EmergencyEncounter();
     /**
      * Creates an IntentService.  Invoked by your subclass's constructor.
      *
@@ -130,7 +135,16 @@ public class ClientService extends IntentService {
     protected void onHandleIntent(Intent intent) {
         mNotifyManager =
                 (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        mBuilder = new NotificationCompat.Builder(this);
+        //mahiti added
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            int importance = NotificationManager.IMPORTANCE_HIGH;
+            NotificationChannel mChannel = new NotificationChannel(
+                    channelId, channelName, importance);
+            mNotifyManager.createNotificationChannel(mChannel);
+        }
+
+        mBuilder = new NotificationCompat.Builder(this,channelId);
+
         Boolean success = false;
 
         sessionManager=new SessionManager(getApplicationContext());
@@ -778,6 +792,7 @@ public class ClientService extends IntentService {
                     current_intent.putExtra("status", statusCode);
                     statusCode = STATUS_ENCOUNTER_NOT_CREATED;
                     if (statusCode == STATUS_ENCOUNTER_NOT_CREATED) {
+//                        #634
                         boolean encounter_vitals = uploadEncounterVitals(visitID, visitUUID, patient, startDateTime,
                                 temperature, respiratory, weight, height, pulse, bpSys, bpDias, spO2);
 
@@ -790,9 +805,36 @@ public class ClientService extends IntentService {
                                 patHistory, famHistory, complaint, physFindings);
 
                         if (encounter_notes && encounter_vitals) uploadStatus = true;
+
+                        String query = "Select ifnull(emergency,'') as emergency FROM visit WHERE _id = " + visitID + "";
+                        Cursor cursor=db.rawQuery(query,null);
+                        if(cursor!=null) {
+                            while(cursor.moveToNext()) {
+                                String emergency = cursor.getString(cursor.getColumnIndex("emergency"));
+                                if (emergency.equalsIgnoreCase("true")) {
+
+                                    boolean Emergency = emergencyEncounter.uploadEncounterEmergency(visitID, visitUUID, startDateTime,patientID,db,getApplicationContext());
+//                                     = uploadEncounterEmergency(visitID, visitUUID, patient, startDateTime);
+                                }
+                            }
+                            cursor.close();
+                        }
+
                     } else if (statusCode == STATUS_ENCOUNTER_NOTE_NOT_CREATED) {
                         boolean encounter_notes = uploadEncounterNotes(visitID, visitUUID, patient, startDateTime,
                                 patHistory, famHistory, complaint, physFindings);
+                        String query = "Select ifnull(emergency,'') as emergency FROM visit WHERE _id = " + visitID + "";
+                        Cursor cursor=db.rawQuery(query,null);
+                        if(cursor!=null) {
+                            while(cursor.moveToNext()) {
+                                String emergency = cursor.getString(cursor.getColumnIndex("emergency"));
+                                if (emergency.equalsIgnoreCase("true")) {
+//                                    boolean Emergency = uploadEncounterEmergency(visitID, visitUUID, patient, startDateTime);
+                                    boolean Emergency = emergencyEncounter.uploadEncounterEmergency(visitID, visitUUID, startDateTime,patientID,db,getApplicationContext());
+                                }
+                            }
+                            cursor.close();
+                        }
                         uploadStatus = encounter_notes;
                     }
                 }
@@ -827,7 +869,23 @@ public class ClientService extends IntentService {
                 if (encounter_vitals) statusCode = STATUS_ENCOUNTER_NOTE_NOT_CREATED;
                 boolean encounter_notes = uploadEncounterNotes(visitID, visitUUID, patient, startDateTime,
                         patHistory, famHistory, complaint, physFindings);
+
+                String query = "Select ifnull(emergency,'') as emergency FROM visit WHERE _id = " + visitID + "";
+                Cursor cursor=db.rawQuery(query,null);
+                if(cursor!=null) {
+                    while(cursor.moveToNext()) {
+                        String emergency = cursor.getString(cursor.getColumnIndex("emergency"));
+                        if (emergency.equalsIgnoreCase("true")) {
+//                            boolean Emergency = uploadEncounterEmergency(visitID, visitUUID, patient, startDateTime);
+//                            boolean Emergency = emergencyEncounter.uploadEncounterEmergency(visitID, visitUUID, patient, startDateTime,mNotifyManager,mBuilder,patientID,mId,numMessages,db);
+                            boolean Emergency = emergencyEncounter.uploadEncounterEmergency(visitID, visitUUID, startDateTime,patientID,db,getApplicationContext());
+                        }
+                    }
+                    cursor.close();
+                }
+
                 if (encounter_notes && encounter_vitals) uploadStatus = true;
+
             }
 
             current_intent.putExtra("status", statusCode);
@@ -862,28 +920,41 @@ public class ClientService extends IntentService {
         Log.d(TAG, "entering the visit");
         //checking the patient visit to avoid multiple visits
         visitSummaryHelper vistSummaryHelper=new visitSummaryHelper();
-        if (dev_mode==true) {
-            visitmodel = vistSummaryHelper.isOpenmrsVisitExists("015ed97c-46c2-4837-a88e-517011e77cca", "2019-03-07T11:24:25.648+0530");
+        if (NetworkConnection.isOnline(this)) {
+            if (dev_mode == true) {
+                visitmodel = vistSummaryHelper.isOpenmrsVisitExists("015ed97c-46c2-4837-a88e-517011e77cca", "2019-03-07T11:24:25.648+0530");
+            } else {
+                visitmodel = vistSummaryHelper.isOpenmrsVisitExists(patient.getOpenmrsId(), startDateTime);
+            }
+
+            //TODO: Location UUID needs to be found before doing these
+            if (dev_mode == false) {
+                visitString =
+                        String.format("{\"startDatetime\":\"%s\"," +
+                                        "\"visitType\":\"" + UuidDictionary.VISIT_TELEMEDICINE + "\"," +
+                                        "\"patient\":\"%s\"," +
+                                        "\"location\":\"%s\"}",
+                                startDateTime, patient.getOpenmrsId(), location_uuid);
+            } else {
+                visitString = String.format("{\"startDatetime\":\"2019-03-07T11:24:25.648+0530\",\"visitType\":\"a86ac96e-2e07-47a7-8e72-8216a1a75bfd\",\"patient\":\"015ed97c-46c2-4837-a88e-517011e77cca\",\"location\":\"b56d5d16-bf89-4ac0-918d-e830fbfba290\"}");
+            }
         }else{
-            visitmodel = vistSummaryHelper.isOpenmrsVisitExists(patient.getOpenmrsId(), startDateTime);
-        }
-        //TODO: Location UUID needs to be found before doing these
-        if (dev_mode==false) {
             visitString =
                     String.format("{\"startDatetime\":\"%s\"," +
                                     "\"visitType\":\"" + UuidDictionary.VISIT_TELEMEDICINE + "\"," +
                                     "\"patient\":\"%s\"," +
                                     "\"location\":\"%s\"}",
                             startDateTime, patient.getOpenmrsId(), location_uuid);
-        }else{
-            visitString = String.format("{\"startDatetime\":\"2019-03-07T11:24:25.648+0530\",\"visitType\":\"a86ac96e-2e07-47a7-8e72-8216a1a75bfd\",\"patient\":\"015ed97c-46c2-4837-a88e-517011e77cca\",\"location\":\"b56d5d16-bf89-4ac0-918d-e830fbfba290\"}");
         }
         WebResponse responseVisit=null;
         if (visitmodel.isVisitExists()==false) {
             Log.d(TAG, "Visit String: " + visitString);
 
             responseVisit = HelperMethods.postCommand("visit", visitString, getApplicationContext());
-            Log.d(TAG, String.valueOf(responseVisit.getResponseCode()));
+//            #639
+            if (responseVisit != null) {
+                Log.d(TAG, String.valueOf(responseVisit.getResponseCode()));
+            }
             if (responseVisit != null && responseVisit.getResponseCode() != 201) {
                 String newText = "Visit was not created. Please check your connection.";
                 mBuilder.setContentText(newText).setNumber(++numMessages);
@@ -1148,6 +1219,7 @@ public class ClientService extends IntentService {
         //---------------------
     }
 
+
     private boolean uploadEncounterNotes(String visitID, String visitUUID, Patient patient, String startDateTime,
                                          Obs patHistory, Obs famHistory, Obs complaint, Obs physFindings) {
 
@@ -1306,6 +1378,10 @@ public class ClientService extends IntentService {
             return true;
         }
     }
+
+
+
+
 
     private boolean uploadSurvey(Integer patientID, String visitID, Intent intent){
         Patient patient = new Patient();
